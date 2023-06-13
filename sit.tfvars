@@ -9,4 +9,4 @@ default_tags = {
 }
 
 bucket = "simidevops-terraform-state-files"
-key = "sit/terraform.tfstate"
+key    = "sit/terraform.tfstate"
