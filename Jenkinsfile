@@ -51,7 +51,7 @@ pipeline {
             }
             steps {
                 sh '''
-                   cd codebase
+                   cd codebase/dev
                    terraform init -backend-config=../../env/"${AWS_ENV}"/backend.tfvars
                    terraform destroy -var-file ../../env/"${AWS_ENV}"/backend.tfvars  -var-file ../env/"${AWS_ENV}"/ec2.tfvars -auto-approve
                 '''
