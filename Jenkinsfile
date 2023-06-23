@@ -2,7 +2,7 @@ pipeline {
     agent any 
 
     parameters {
-        choice (name: 'AWS_ENV', choices: 'dev\nsit', description : 'implementation stage')
+        choice (name: 'TARGET_ENV', choices: ["dev","sit"], description : "target deployment environment")
     }
     environment {
         AWS_ACCESS_KEY_ID = credentials ('AWS_ACCESS_KEY_ID')
@@ -20,8 +20,8 @@ pipeline {
             steps {
                 sh '''
                    cd codebase/dev
-                   terraform init -backend-config=../../env/"${AWS_ENV}"/backend.tfvars
-                   terraform plan -var-file ../../env/"${AWS_ENV}"/backend.tfvars  -var-file ../env/"${AWS_ENV}"/ec2.tfvars -auto-approve
+                   terraform init -backend-config=../../env/"${TARGET_ENV}"/backend.tfvars
+                   terraform plan -var-file ../../env/"${TARGET_ENV}"/backend.tfvars  -var-file ../env/"${TARGET_ENV}"/ec2.tfvars -auto-approve
                 '''
                 script {
                     env.NEXT_STEP = input message: 'Implement Plan?', ok: 'Implement',
@@ -31,29 +31,20 @@ pipeline {
         }
         stage ('implement apply') {
             when {
+                any of{
                 expression {
                     env.NEXT_STEP == 'apply'
                 }
-            }
-            steps {
-                sh '''
-                   cd codebase/dev
-                   terraform init -backend-config=../../env/"${AWS_ENV}"/backend.tfvars
-                   terraform apply -var-file ../../env/"${AWS_ENV}"/backend.tfvars  -var-file ../env/"${AWS_ENV}"/ec2.tfvars -auto-approve
-                '''
-            }
-        }
-        stage ('implement destroy') {
-            when {
                 expression {
                     env.NEXT_STEP == 'destroy'
+            }
                 }
             }
             steps {
                 sh '''
                    cd codebase/dev
-                   terraform init -backend-config=../../env/"${AWS_ENV}"/backend.tfvars
-                   terraform destroy -var-file ../../env/"${AWS_ENV}"/backend.tfvars  -var-file ../env/"${AWS_ENV}"/ec2.tfvars -auto-approve
+                   terraform init -backend-config=../../env/"${TARGET_ENV}"/backend.tfvars
+                   terraform apply -var-file ../../env/"${TARGET_ENV}"/backend.tfvars  -var-file ../env/"${TARGET_ENV}"/ec2.tfvars -auto-approve
                 '''
             }
         }
