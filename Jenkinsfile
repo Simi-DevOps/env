@@ -1,104 +1,58 @@
-resource "aws_instance" "ec2_1" {
+pipeline {
+    agent any 
 
-  ami           = ami-00b1c9efd33fda707
-  instance_type = t2.medium
-  key_name      = Thirdkey
-  availability_zone = "eu-west-1a"
-  tags              = EC2 1 machine
-}
-
-resource "aws_instance" "ec2_2" {
-
-  ami           = ami-00b1c9efd33fda707
-  instance_type = t2.medium
-  key_name      = Thirdkey
-  availability_zone = "eu-west-1b"
-  tags              =  EC2 2 machine
-}
-
-
-resource "aws_vpc" "Task5_vpc" {
-  cidr_block = "10.0.0.0/16"
-  tags = {
-    Name = "Task 5 VPC"
-  }
-}
-
-resource "aws_subnet" "pub1" {
-  vpc_id     = aws_vpc.Task5_vpc.id
-  cidr_block = "10.0.0.0/24"
-
-  tags = {
-    Name = "Public Subnet 1"
-  }
-}
-
-resource "aws_subnet" "pub2" {
-  vpc_id     = aws_vpc.Task5_vpc.id
-  cidr_block = "10.0.1.0/24"
-
-  tags = {
-    Name = "Public Subnet 2"
-  }
-}
-
-output "aws_vpc" {
-  value = aws_vpc.Task5_vpc.id
-}
-
-output "subnet" {
-  value = aws_subnet.pub1.id
-}
-
-output "subnet" {
-  value = aws_subnet.pub2.id
-}
-
-
-resource "aws_security_group" "allow_tls" {
-  name        = "allow_tls"
-  description = "Allow TLS inbound traffic"
-  vpc_id      = aws_vpc.Task5_vpc.id
-
-  ingress {
-    description      = "TLS from VPC"
-    from_port        = 22
-    to_port          = 22
-    protocol         = "tcp"
-    cidr_blocks      = [aws_vpc.main.cidr_block]
-  }
-
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
-  }
-
-  tags = {
-    Name = "allow_tls"
-  }
-
-
-}
-backend.tf
-
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 4.16"
+    parameters {
+        choice (name: 'TARGET_ENV', choices: ["dev","sit"], description : "target deployment environment")
     }
-  }
-  backend "s3" {
-    bucket = "simidevops-terraform-state-files"
-    key    = "dev/terraform.tfstate"
-    region = "eu-west-1"
-  }
-  required_version = ">= 1.2.0"
-}
-
-provider "aws" {
-  region = "eu-west-1"
+    environment {
+        AWS_ACCESS_KEY_ID = credentials ('AWS_ACCESS_KEY_ID')
+        AWS_SECRET_ACCESS_KEY = credentials ('AWS_SECRET_ACCESS_KEY')
+    }
+    
+    stages {
+        stage ("download code and env config") {
+            steps {
+                sh 'git clone https://github.com/Simi-DevOps/codebase.git'
+                sh 'git clone https://github.com/Simi-DevOps/env.git'
+            }
+        }
+        stage ('plan') {
+            steps {
+                sh '''
+                   cd codebase/dev
+                   terraform init -backend-config=../../env/"${TARGET_ENV}"/backend.tfvars
+                   terraform plan -var-file ../../env/"${TARGET_ENV}"/backend.tfvars  -var-file ../env/"${TARGET_ENV}"/ec2.tfvars -auto-approve
+                '''
+                script {
+                    env.NEXT_STEP = input message: 'Implement Plan?', ok: 'Implement',
+                    parameters: [choice (name: 'Implement', choices: 'apply\ndestroy\ndo nothing', description: 'implementation stage')]
+                }
+            }
+        }
+        stage ('implement apply') {
+            when {
+                any of{
+                expression {
+                    env.NEXT_STEP == 'apply'
+                }
+                expression {
+                    env.NEXT_STEP == 'destroy'
+            }
+                }
+            }
+            steps {
+                sh '''
+                   cd codebase/dev
+                   terraform init -backend-config=../../env/"${TARGET_ENV}"/backend.tfvars
+                   terraform apply -var-file ../../env/"${TARGET_ENV}"/backend.tfvars  -var-file ../env/"${TARGET_ENV}"/ec2.tfvars -auto-approve
+                '''
+            }
+        }
+    }
+    
+    post {
+        always {
+            deleteDir()
+        }
+    }
 }
